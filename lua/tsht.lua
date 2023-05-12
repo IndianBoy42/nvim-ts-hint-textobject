@@ -187,38 +187,12 @@ local function get_nodes(opts)
 end
 
 
-local function node_start(node)
-  return { line = node[1], column = node[2] + 1, window = 0 }
-end
-
-local function node_end(node)
-  return { line = node[3], column = node[4], window = 0 }
-end
-
-
-local function move(opts)
-  local ok, hop = pcall(require, 'hop')
-  if not ok then
-    vim.notify('move requires the "hop" plugin', vim.log.levels.WARN)
-    return
-  end
-  opts = opts or {}
-  local nodes = get_nodes(opts)
-  local transform = (opts.side or 'start') == 'start' and node_start or node_end
-  local gen = function()
-    return {
-      jump_targets = vim.tbl_map(transform, nodes)
-    }
-  end
-  hop.hint_with(gen)
-end
-
-
 local function region(opts)
   api.nvim_buf_clear_namespace(0, ns, 0, -1)
   opts = opts or {}
   local region_start = opts.side == nil or opts.side == 'start'
   local region_end = opts.side == nil or opts.side == 'end'
+  local region_select = opts.mode == nil or opts.mode == "select"
   local nodes = get_nodes(opts)
   local iter = keys_iter()
   local hints = {}
@@ -258,14 +232,16 @@ local function region(opts)
       local node = hints[key]
       if node then
         local start_row, start_col, end_row, end_col = unpack(node)
-        if not region_end then
+        if not region_end and region_select then
           vim.cmd('normal! v')
         end
         if region_start then
           api.nvim_win_set_cursor(0, { start_row + 1, start_col })
         end
         if region_end then
-          vim.cmd('normal! v')
+          if region_select then
+            vim.cmd('normal! v')
+          end
           local max_row = api.nvim_buf_line_count(0)
           if max_row == end_row then
             end_row = end_row - 1
@@ -297,10 +273,7 @@ end
 ---@param opts table|nil
 --- - ignore_injections boolean|nil defaults to true
 function M.nodes(opts)
-  local run = coroutine.wrap(function()
-    region(opts)
-  end)
-  run()
+  coroutine.wrap(function() region(opts) end)()
 end
 
 
@@ -311,7 +284,9 @@ end
 --- - side "start"|"end"|nil defaults to "start"
 --- - ignore_injections boolean|nil defaults to true
 function M.move(opts)
-  coroutine.wrap(function() move(opts) end)()
+  opts = opts or {}
+  opts.mode = "move"
+  coroutine.wrap(function() region(opts) end)()
 end
 
 
